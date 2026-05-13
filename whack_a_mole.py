@@ -51,6 +51,14 @@ MOLE_VISIBLE_S  = 1.0    # seconds a mole stays up before retreating
 MOLE_INTERVAL_S = 0.75   # seconds between new mole spawns
 GAME_DURATION_S = 30     # total game time in seconds
 
+# Difficulty settings: (mole_visible_s, mole_interval_s)
+DIFFICULTIES = {
+    "Easy":   (1.2, 1.0),
+    "Medium": (1.0, 0.75),
+    "Hard":   (0.6, 0.4),
+}
+DIFFICULTY_ORDER = ["Easy", "Medium", "Hard"]
+
 
 # ---------------------------------------------------------------------------
 # Sound helpers
@@ -72,11 +80,12 @@ def _make_beep(freq: float, duration: float, volume: float = 0.5) -> pygame.mixe
 class Mole:
     """Represents a single mole that has popped up from a hole."""
 
-    def __init__(self, hole_index: int, appeared_at: float) -> None:
+    def __init__(self, hole_index: int, appeared_at: float,
+                 mole_visible_s: float = MOLE_VISIBLE_S) -> None:
         self.hole_index  = hole_index
         self.appeared_at = appeared_at
         self.whacked     = False
-        self.hide_at     = appeared_at + MOLE_VISIBLE_S
+        self.hide_at     = appeared_at + mole_visible_s
 
     # Convenience position accessors
     @property
@@ -151,6 +160,94 @@ def draw_mole(screen: pygame.Surface, mole: Mole, font: pygame.font.Font) -> Non
     if mole.whacked:
         hit_txt = font.render("HIT!", True, YELLOW)
         screen.blit(hit_txt, (cx - hit_txt.get_width() // 2, cy - r - 34))
+
+
+def difficulty_screen(screen: pygame.Surface,
+                      font: pygame.font.Font,
+                      big_font: pygame.font.Font) -> str:
+    """Show a difficulty selection screen; return one of 'Easy', 'Medium', 'Hard'."""
+    selected      = 1  # index into DIFFICULTY_ORDER (default: Medium)
+    clock         = pygame.time.Clock()
+    diff_rects:   list[pygame.Rect] = []
+    confirm_rect: pygame.Rect       = pygame.Rect(0, 0, 0, 0)
+
+    # Colours for each difficulty option
+    diff_colors = {
+        "Easy":   (100, 210, 100),
+        "Medium": YELLOW,
+        "Hard":   (230, 80, 80),
+    }
+
+    while True:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_LEFT, pygame.K_a):
+                    selected = (selected - 1) % len(DIFFICULTY_ORDER)
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                    selected = (selected + 1) % len(DIFFICULTY_ORDER)
+                elif event.key == pygame.K_RETURN:
+                    return DIFFICULTY_ORDER[selected]
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                for i, rect in enumerate(diff_rects):
+                    if rect.collidepoint(mx, my):
+                        selected = i
+                if confirm_rect.collidepoint(mx, my):
+                    return DIFFICULTY_ORDER[selected]
+
+        # ── Draw ──
+        screen.fill(DARK_GREEN)
+        for i in range(0, WINDOW_WIDTH, 40):
+            pygame.draw.line(screen, GREEN, (i, 0), (i, WINDOW_HEIGHT), 1)
+
+        title = big_font.render("WHACK-A-MOLE", True, YELLOW)
+        screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 60))
+
+        sub = font.render("Select Difficulty", True, WHITE)
+        screen.blit(sub, (WINDOW_WIDTH // 2 - sub.get_width() // 2, 140))
+
+        # Three difficulty buttons
+        btn_w, btn_h = 180, 70
+        gap          = 30
+        total_w      = btn_w * 3 + gap * 2
+        start_x      = WINDOW_WIDTH // 2 - total_w // 2
+        diff_rects.clear()
+        for i, name in enumerate(DIFFICULTY_ORDER):
+            rect = pygame.Rect(start_x + i * (btn_w + gap), 200, btn_w, btn_h)
+            diff_rects.append(rect)
+            is_sel    = (i == selected)
+            bg_color  = diff_colors[name] if is_sel else HEADER_COLOR
+            bd_color  = diff_colors[name]
+            pygame.draw.rect(screen, bg_color, rect, border_radius=12)
+            pygame.draw.rect(screen, bd_color, rect, 3, border_radius=12)
+            lbl_color = BLACK if is_sel else diff_colors[name]
+            lbl       = font.render(name, True, lbl_color)
+            screen.blit(lbl, (rect.centerx - lbl.get_width() // 2,
+                               rect.centery - lbl.get_height() // 2))
+
+        # Show timing info for selected difficulty
+        vis_s, int_s = DIFFICULTIES[DIFFICULTY_ORDER[selected]]
+        info = font.render(
+            f"Mole visible: {vis_s:.1f}s   |   Spawn interval: {int_s:.2f}s",
+            True, GRAY)
+        screen.blit(info, (WINDOW_WIDTH // 2 - info.get_width() // 2, 295))
+
+        # Confirm button
+        confirm_rect.update(WINDOW_WIDTH // 2 - 120, 360, 240, 52)
+        pygame.draw.rect(screen, HEADER_COLOR, confirm_rect, border_radius=12)
+        pygame.draw.rect(screen, YELLOW,       confirm_rect, 3, border_radius=12)
+        conf_lbl = font.render("CONFIRM  (Enter)", True, YELLOW)
+        screen.blit(conf_lbl, (WINDOW_WIDTH // 2 - conf_lbl.get_width() // 2,
+                                confirm_rect.centery - conf_lbl.get_height() // 2))
+
+        hint = font.render("← / → to change", True, GRAY)
+        screen.blit(hint, (WINDOW_WIDTH // 2 - hint.get_width() // 2, 430))
+
+        pygame.display.flip()
 
 
 def name_input_screen(screen: pygame.Surface,
@@ -336,7 +433,9 @@ def run_round(screen: pygame.Surface, clock: pygame.time.Clock,
               font: pygame.font.Font, big_font: pygame.font.Font,
               player_name: str,
               whack_sound: pygame.mixer.Sound,
-              miss_sound: pygame.mixer.Sound) -> int:
+              miss_sound: pygame.mixer.Sound,
+              mole_visible_s: float = MOLE_VISIBLE_S,
+              mole_interval_s: float = MOLE_INTERVAL_S) -> int:
     """Run one 30-second round for player_name and return their score."""
     score:        int        = 0
     start_time:   float      = time.time()
@@ -368,9 +467,9 @@ def run_round(screen: pygame.Surface, clock: pygame.time.Clock,
         available = [i for i in range(len(HOLES)) if i not in active_holes]
         if (available
                 and time_left > 0
-                and (now - last_mole_t) >= MOLE_INTERVAL_S):
+                and (now - last_mole_t) >= mole_interval_s):
             idx = random.choice(available)
-            moles.append(Mole(idx, now))
+            moles.append(Mole(idx, now, mole_visible_s))
             active_holes.add(idx)
             last_mole_t = now
 
@@ -410,17 +509,23 @@ if __name__ == "__main__":
     miss_sound  = _make_beep(180, 0.15, 0.4)
 
     while True:
+        # Choose difficulty first
+        difficulty = difficulty_screen(screen, font, big_font)
+        mole_visible_s, mole_interval_s = DIFFICULTIES[difficulty]
+
         # Collect both player names
         name1 = name_input_screen(screen, font, big_font, player_number=1)
         name2 = name_input_screen(screen, font, big_font, player_number=2)
 
         # Round 1 — Player 1
         round_intro_screen(screen, name1, round_num=1, font=font, big_font=big_font)
-        score1 = run_round(screen, clock, font, big_font, name1, whack_sound, miss_sound)
+        score1 = run_round(screen, clock, font, big_font, name1, whack_sound, miss_sound,
+                           mole_visible_s, mole_interval_s)
 
         # Round 2 — Player 2
         round_intro_screen(screen, name2, round_num=2, font=font, big_font=big_font)
-        score2 = run_round(screen, clock, font, big_font, name2, whack_sound, miss_sound)
+        score2 = run_round(screen, clock, font, big_font, name2, whack_sound, miss_sound,
+                           mole_visible_s, mole_interval_s)
 
         # Final scoreboard — loop back if they want to play again
         if not final_scoreboard(screen, [name1, name2], [score1, score2],
