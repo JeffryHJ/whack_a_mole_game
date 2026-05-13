@@ -1,3 +1,5 @@
+import math
+import struct
 import pygame
 import random
 import sys
@@ -48,6 +50,20 @@ HOLES: list[tuple[int, int]] = [
 MOLE_VISIBLE_S  = 1.0    # seconds a mole stays up before retreating
 MOLE_INTERVAL_S = 0.75   # seconds between new mole spawns
 GAME_DURATION_S = 30     # total game time in seconds
+
+
+# ---------------------------------------------------------------------------
+# Sound helpers
+# ---------------------------------------------------------------------------
+def _make_beep(freq: float, duration: float, volume: float = 0.5) -> pygame.mixer.Sound:
+    """Generate a sine-wave tone as a pygame.mixer.Sound (22050 Hz, 16-bit mono)."""
+    rate  = 22050
+    n     = int(rate * duration)
+    buf   = bytearray(n * 2)
+    for i in range(n):
+        val = int(volume * 32767 * math.sin(2 * math.pi * freq * i / rate))
+        struct.pack_into('<h', buf, i * 2, max(-32768, min(32767, val)))
+    return pygame.mixer.Sound(buffer=bytes(buf))
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +334,9 @@ def draw_hud(screen: pygame.Surface, score: int, time_left: float,
 # ---------------------------------------------------------------------------
 def run_round(screen: pygame.Surface, clock: pygame.time.Clock,
               font: pygame.font.Font, big_font: pygame.font.Font,
-              player_name: str) -> int:
+              player_name: str,
+              whack_sound: pygame.mixer.Sound,
+              miss_sound: pygame.mixer.Sound) -> int:
     """Run one 30-second round for player_name and return their score."""
     score:        int        = 0
     start_time:   float      = time.time()
@@ -343,6 +361,7 @@ def run_round(screen: pygame.Surface, clock: pygame.time.Clock,
                         mole.hide_at = now + 0.30
                         score       += 1
                         active_holes.discard(mole.hole_index)
+                        whack_sound.play()
                         break
 
         # ── Spawn ────────────────────────────────────────────────────────────
@@ -358,6 +377,8 @@ def run_round(screen: pygame.Surface, clock: pygame.time.Clock,
         # ── Retire expired moles ─────────────────────────────────────────────
         for mole in moles[:]:
             if mole.is_expired(now):
+                if not mole.whacked:
+                    miss_sound.play()
                 active_holes.discard(mole.hole_index)
                 moles.remove(mole)
 
@@ -378,12 +399,15 @@ def run_round(screen: pygame.Surface, clock: pygame.time.Clock,
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    pygame.mixer.pre_init(22050, -16, 1, 512)
     pygame.init()
     screen   = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Whack-a-Mole")
-    clock    = pygame.time.Clock()
-    font     = pygame.font.SysFont("Arial", 28, bold=True)
-    big_font = pygame.font.SysFont("Arial", 52, bold=True)
+    clock       = pygame.time.Clock()
+    font        = pygame.font.SysFont("Arial", 28, bold=True)
+    big_font    = pygame.font.SysFont("Arial", 52, bold=True)
+    whack_sound = _make_beep(600, 0.10, 0.6)
+    miss_sound  = _make_beep(180, 0.15, 0.4)
 
     while True:
         # Collect both player names
@@ -392,11 +416,11 @@ if __name__ == "__main__":
 
         # Round 1 — Player 1
         round_intro_screen(screen, name1, round_num=1, font=font, big_font=big_font)
-        score1 = run_round(screen, clock, font, big_font, name1)
+        score1 = run_round(screen, clock, font, big_font, name1, whack_sound, miss_sound)
 
         # Round 2 — Player 2
         round_intro_screen(screen, name2, round_num=2, font=font, big_font=big_font)
-        score2 = run_round(screen, clock, font, big_font, name2)
+        score2 = run_round(screen, clock, font, big_font, name2, whack_sound, miss_sound)
 
         # Final scoreboard — loop back if they want to play again
         if not final_scoreboard(screen, [name1, name2], [score1, score2],
