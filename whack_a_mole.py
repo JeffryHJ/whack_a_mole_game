@@ -166,8 +166,10 @@ def difficulty_screen(screen: pygame.Surface,
                       font: pygame.font.Font,
                       big_font: pygame.font.Font) -> str:
     """Show a difficulty selection screen; return one of 'Easy', 'Medium', 'Hard'."""
-    selected = 1  # index into DIFFICULTY_ORDER (default: Medium)
-    clock    = pygame.time.Clock()
+    selected      = 1  # index into DIFFICULTY_ORDER (default: Medium)
+    clock         = pygame.time.Clock()
+    diff_rects:   list[pygame.Rect] = []
+    confirm_rect: pygame.Rect       = pygame.Rect(0, 0, 0, 0)
 
     # Colours for each difficulty option
     diff_colors = {
@@ -191,10 +193,10 @@ def difficulty_screen(screen: pygame.Surface,
                     return DIFFICULTY_ORDER[selected]
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-                for i, rect in enumerate(_diff_rects):
+                for i, rect in enumerate(diff_rects):
                     if rect.collidepoint(mx, my):
                         selected = i
-                if _confirm_rect.collidepoint(mx, my):
+                if confirm_rect.collidepoint(mx, my):
                     return DIFFICULTY_ORDER[selected]
 
         # ── Draw ──
@@ -213,10 +215,10 @@ def difficulty_screen(screen: pygame.Surface,
         gap          = 30
         total_w      = btn_w * 3 + gap * 2
         start_x      = WINDOW_WIDTH // 2 - total_w // 2
-        _diff_rects.clear()
+        diff_rects.clear()
         for i, name in enumerate(DIFFICULTY_ORDER):
             rect = pygame.Rect(start_x + i * (btn_w + gap), 200, btn_w, btn_h)
-            _diff_rects.append(rect)
+            diff_rects.append(rect)
             is_sel    = (i == selected)
             bg_color  = diff_colors[name] if is_sel else HEADER_COLOR
             bd_color  = diff_colors[name]
@@ -235,24 +237,17 @@ def difficulty_screen(screen: pygame.Surface,
         screen.blit(info, (WINDOW_WIDTH // 2 - info.get_width() // 2, 295))
 
         # Confirm button
-        _confirm_rect.update(WINDOW_WIDTH // 2 - 120, 360, 240, 52)
-        pygame.draw.rect(screen, HEADER_COLOR, _confirm_rect, border_radius=12)
-        pygame.draw.rect(screen, YELLOW,       _confirm_rect, 3, border_radius=12)
+        confirm_rect.update(WINDOW_WIDTH // 2 - 120, 360, 240, 52)
+        pygame.draw.rect(screen, HEADER_COLOR, confirm_rect, border_radius=12)
+        pygame.draw.rect(screen, YELLOW,       confirm_rect, 3, border_radius=12)
         conf_lbl = font.render("CONFIRM  (Enter)", True, YELLOW)
         screen.blit(conf_lbl, (WINDOW_WIDTH // 2 - conf_lbl.get_width() // 2,
-                                _confirm_rect.centery - conf_lbl.get_height() // 2))
+                                confirm_rect.centery - conf_lbl.get_height() // 2))
 
         hint = font.render("← / → to change", True, GRAY)
         screen.blit(hint, (WINDOW_WIDTH // 2 - hint.get_width() // 2, 430))
 
         pygame.display.flip()
-
-
-# Module-level mutable containers used inside difficulty_screen (avoids
-# recreating list/Rect objects on every frame)
-_diff_rects:   list[pygame.Rect] = []
-_confirm_rect: pygame.Rect       = pygame.Rect(0, 0, 0, 0)
-
 
 
 def name_input_screen(screen: pygame.Surface,
